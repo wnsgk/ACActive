@@ -242,12 +242,14 @@ class MasterDataset:
 class MasterDataset2:
     """ Dataset that holds all data in an indexable way """
     def __init__(self, name: str, df: pd.DataFrame = None, dataset: str = 'ALDH1', nbits=1024, feature = '', representation: str = 'ecfp', root: str = 'data',
-                 overwrite: bool = False, scramble_x: bool = False, scramble_x_seed: int = 1, input='./data/input.csv') -> None:
+                 overwrite: bool = False, scramble_x: bool = False, scramble_x_seed: int = 1, input='./data/input.csv', assay_active = None, assay_inactive = None) -> None:
 
         assert representation in ['ecfp', 'graph', 'scaffold'], f"'representation' must be 'ecfp' or 'graph', not {representation}"
+        self.mode = name
         self.representation = representation
         self.pth = input
-
+        self.assay_active = assay_active
+        self.assay_inactive = assay_inactive
         self.smiles, self.x, self.y = self.load()
 
         feature_map = {'cb':'chemberta', 'mf':'molformer', 'um':'unimol', 'ba':'brics_all', 'bp':'brics_pos', 'bas':'brics_all_sim', 'bps':'brics_pos_sim','fp+cb':'chemberta', 
@@ -333,12 +335,18 @@ class MasterDataset2:
         print('Loading data ... ', flush=True, file=sys.stderr)
 
         csv = pd.read_csv(self.pth)
+
         smiles = np.array(csv['smiles'])
         x = smiles_to_ecfp(smiles, silent=False)
-        if 'y' in csv.columns:
+        if self.mode != 'test' and self.assay_active is not None:
+            csv.loc[csv['y'].isin(self.assay_active), 'y'] = 1
+            csv.loc[csv['y'].isin(self.assay_inactive), 'y'] = 0
+            csv['y'] = csv['y'].astype(int)
+        if self.mode != 'test':
             y = np.array(csv['y'])
         else:
-            y = np.zeros(len(csv), dtype=float)
+            y = np.zeros(len(csv))
+        print(y)
         return smiles, x, y
 
     def __len__(self) -> int:

@@ -929,7 +929,7 @@ class SampleAwareAttention(torch.nn.Module):
 class MLP_triple(torch.nn.Module):
     def __init__(self, in_feats: Optional[List[int]] = None, n_hidden: int = 128, hidden = 512, at_hidden=64, layer = '', n_out: int = 2, n_layers: int = 2, 
                  seed: int = 42, lr: float = 3e-4, epochs: int = 50, anchored: bool = True, l2_lambda: float = 3e-4,
-                 weight_decay: float = 0, dropout_ratio=0):
+                 weight_decay: float = 0, dropout_ratio=0, classification=False):
         super().__init__()
         self.seed, self.lr, self.l2_lambda, self.epochs, self.anchored = seed, lr, l2_lambda, epochs, anchored
         self.weight_decay = weight_decay
@@ -946,6 +946,7 @@ class MLP_triple(torch.nn.Module):
         self.att_weight = None
         self.att_weight2 = None
         self.feat_len = len(in_feats)
+        self.classification = classification
 
         for i in range(n_layers):
             self.fc.append(torch.nn.Linear(self.proj_dim * len(in_feats) if i == 0 else n_hidden, n_hidden))
@@ -1011,8 +1012,7 @@ class MLP_triple(torch.nn.Module):
             # feature.append(x)
         # for block in self.blocks:
         #     x = block(x)
-        reg = True
-        if reg:
+        if not self.classification:
             x = self.regout(x)
         else:
             x = self.out(x)
@@ -1159,13 +1159,13 @@ class LossPredictionModule(torch.nn.Module):
         return loss.mean()
 
 class Model_triple(torch.nn.Module):
-    def __init__(self, architecture: str, in_feats, n_hidden, hidden, at_hidden, layer, cycle, lmda=0, **kwargs):
+    def __init__(self, architecture: str, in_feats, n_hidden, hidden, at_hidden, layer, cycle, lmda=0, classification = False, **kwargs):
         super().__init__()
         assert architecture in ['gcn', 'mlp', 'gat', 'gin']
         self.architecture = architecture
         n_hidden = 512
         if architecture == 'mlp':
-            self.model = MLP_triple(in_feats=in_feats, n_hidden = n_hidden, hidden = hidden, at_hidden=at_hidden, layer=layer, **kwargs)
+            self.model = MLP_triple(in_feats=in_feats, n_hidden = n_hidden, hidden = hidden, at_hidden=at_hidden, layer=layer, classification=classification, **kwargs)
         elif architecture == 'gcn':
             self.model = GCN_multi(in_feats=in_feats, **kwargs)
         elif architecture == 'gin':
@@ -1177,8 +1177,11 @@ class Model_triple(torch.nn.Module):
 
         self.device_type = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(self.device_type)
-        self.loss_fn = torch.nn.NLLLoss()
-        self.loss_fn = torch.nn.MSELoss()
+        self.classification = classification
+        if self.classification:
+            self.loss_fn = torch.nn.NLLLoss()
+        else:
+            self.loss_fn = torch.nn.MSELoss()
         self.cycle = cycle
         self.lmda = lmda
         self.sim_threshold = 0.6
@@ -1461,7 +1464,10 @@ class Model_triple(torch.nn.Module):
                     if len(y_hat) == 0:
                         y_hat = y_hat.unsqueeze(0)
                     # loss = self.mixup_criterion(self.loss_fn, y_hat, targets_a.squeeze(), targets_b.squeeze(), lam)
-                    loss = self.loss_fn(y_hat.squeeze(), y.squeeze())
+                    if self.classification:
+                        loss = self.loss_fn(y_hat, y.squeeze())
+                    else:
+                        loss = self.loss_fn(y_hat.squeeze(), y.squeeze())
                     # print(loss, lamda*loss_cliff)
                     if self.cycle >= cycle:
                         loss = loss + lamda*loss_cliff
@@ -1790,14 +1796,15 @@ class Model_triple(torch.nn.Module):
 class Ensemble_triple(torch.nn.Module):
     """ Ensemble of GCNs"""
     def __init__(self, ensemble_size: int = 5, seed: int = 0, architecture: str = 'mlp', hidden = 512, at_hidden = 64, layer = '',
-                 in_feats: Optional[List[int]] = None, n_hidden = 1024, cycle=0, lmda=0, **kwargs) -> None:
+                 in_feats: Optional[List[int]] = None, n_hidden = 1024, cycle=0, lmda=0, assay_active = None, **kwargs) -> None:
         self.ensemble_size = 1
         self.architecture = architecture
         self.seed = seed
         rng = np.random.default_rng(seed=seed)
         self.seeds = rng.integers(0, 1000, 10)
+        classification = assay_active is not None
         self.models = {0: Model_triple(seed=self.seeds[0], architecture=architecture, in_feats=in_feats, n_hidden=n_hidden, hidden = hidden, at_hidden=at_hidden, layer=layer, 
-                                       cycle=cycle, lmda=lmda, **kwargs)}
+                                       cycle=cycle, lmda=lmda, classification = classification, **kwargs)}
         # self.models = {i: Model_triple(seed=s, architecture=architecture, in_feats=in_feats, n_hidden=n_hidden, hidden = hidden, at_hidden=at_hidden, layer=layer, 
         #                                cycle=cycle, lmda=lmda, **kwargs) for i, s in enumerate(self.seeds[:5])}
         # self.models = {i: Model_triple(seed=s, architecture=architecture, in_feats=in_feats, n_hidden=n_hidden, **kwargs) for i, s in enumerate(self.seeds)}

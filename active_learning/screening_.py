@@ -84,7 +84,8 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
                     anchored: bool = True, dataset: str = 'ALDH1', scrambledx: bool = False,
                     scrambledx_seed: int = 1, cycle_threshold=1, beta=0, start = 0, feature = '',
                     hidden = 512, at_hidden = 64, layer = '', cycle_rnn = 0, lmda = 0.01, 
-                    input='./data/input.csv', input_unlabel='./data/input_unlabel.csv', output='./result/output.csv') -> pd.DataFrame:
+                    input='./data/input.csv', input_unlabel='./data/input_unlabel.csv', output='./result/output.csv',
+                    assay_active = None, assay_inactive = None) -> pd.DataFrame:
     """
     :param n_start: number of molecules to start out with
     :param acquisition_method: acquisition method, as defined in active_learning.acquisition
@@ -107,8 +108,8 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
     # Load the datasets
     representation = 'ecfp' if architecture in ['mlp', 'rf', 'lgb', 'xgb', 'svm'] else 'graph'
     ds_screen = MasterDataset2('screen', representation=representation, feature = feature, dataset=dataset, scramble_x=scrambledx,
-                              scramble_x_seed=scrambledx_seed, input=input)
-    ds_test = MasterDataset2('test', representation=representation, feature = feature, dataset=dataset, input=input_unlabel)
+                              scramble_x_seed=scrambledx_seed, input=input, assay_active=assay_active, assay_inactive=assay_inactive)
+    ds_test = MasterDataset2('test', representation=representation, feature = feature, dataset=dataset, input=input_unlabel, assay_active=assay_active, assay_inactive=assay_inactive)
     # Initiate evaluation trackers
 
     dir_name = f"{dir}/{seed}"
@@ -140,7 +141,7 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
 
     # Update some tracking variables
     all_train_smiles.append(';'.join(smiles_train.tolist()))
-    hits_discovered.append(sum(y_train).item())
+    # hits_discovered.append(sum(y_train).item())
     hits = smiles_train[np.where(y_train == 1)]
     total_mols_screened.append(len(y_train))
 
@@ -170,17 +171,17 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
     #                                                 shuffle=False, pin_memory=True)
     train_loader = to_torch_dataloader_multi(fp_train, x_train, y_train,
                                     batch_size=INFERENCE_BATCH_SIZE,
-                                    shuffle=False, pin_memory=True)
+                                    shuffle=False, pin_memory=True, classification=assay_active is not None)
     train_loader_balanced = to_torch_dataloader_multi(fp_train, x_train, y_train,
                                                 batch_size=TRAINING_BATCH_SIZE,
-                                                shuffle=False, pin_memory=True)
+                                                shuffle=False, pin_memory=True, classification=assay_active is not None)
     screen_loader = to_torch_dataloader_multi(fp_screen, x_screen, y_screen,
                                         batch_size=INFERENCE_BATCH_SIZE,
-                                        shuffle=False, pin_memory=True)
+                                        shuffle=False, pin_memory=True, classification=assay_active is not None)
     x_test, y_test, smiles_test, fp_test = ds_test.all()
     test_loader = to_torch_dataloader_multi(fp_test, x_test, y_test,
                                     batch_size=INFERENCE_BATCH_SIZE,
-                                    shuffle=False, pin_memory=True)
+                                    shuffle=False, pin_memory=True, classification=assay_active is not None)
 
     ########################################################################
     # Initiate and train the model (optimize if specified)
@@ -190,7 +191,7 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
         # if cycle < start:
         M = Ensemble_triple(seed=seed, ensemble_size=ensemble_size, architecture=architecture, hidden = hidden, at_hidden = at_hidden, layer = layer,
                             in_feats = [len(fp_train[idx][0]) for idx in range(len(fp_train))], 
-                            n_hidden = n_hidden, anchored=anchored, cycle=cycle, lmda=lmda)
+                            n_hidden = n_hidden, anchored=anchored, cycle=cycle, lmda=lmda, assay_active=assay_active)
         # if cycle == 0:
         M.train(train_loader_balanced, valid_loader, cycle=cycle_threshold, verbose=False)
 
@@ -209,7 +210,7 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
     print('hit'+str(cycle)+' : ', len(hits))
 
     ACQ = Acquisition(method='evaluation_exploitation', seed=seed, lambd=lambd)
-    picks = ACQ.acquire(screen_logits_N_K_C, smiles_test, screen_loss=screen_logits_N_K_C_2, hits=hits, n=batch_size, seed=seed, cycle=cycle, y_screen = y_test, dir_name=dir_name, beta=beta, cliff=cycle_rnn, cycle_threshold=cycle_threshold, output=output)
+    picks = ACQ.acquire(screen_logits_N_K_C, smiles_test, screen_loss=screen_logits_N_K_C_2, hits=hits, n=batch_size, seed=seed, cycle=cycle, y_screen = y_test, dir_name=dir_name, beta=beta, cliff=cycle_rnn, cycle_threshold=cycle_threshold, output=output, classification=assay_active is not None)
 
 
     return picks

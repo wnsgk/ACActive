@@ -24,13 +24,16 @@ python experiments/main.py -dataset ALDH1 -acq exploitation
 
 # Prediction
 ```bash
-python experiments/evaluation.py -input ./data/input.csv -input_unlabel ./data/input_unlabel.csv -output ./result/output.csv
+# regression
+python experiments/evaluation.py --input ./data/input.csv --input_unlabel ./data/input_unlabel.csv --output ./result/output.csv
+# classification
+python experiments/evaluation.py --input ./data/input_classification.csv --input_unlabel ./data/input_unlabel.csv --assay_active_values active act a --assay_inactive_values inactive inact i --output ./result/output.csv
 ```
 The **input** is training data annotated with assay values. input.csv needs two columns **smiles** and **y** (assay value).
 
 The **input_unlabel** contains the data to be experimentally tested. input_unlabel.csv needs **smiles** column.
 
-The **output** contains score of each molecules in input_unlabel.csv, indicating its selection priority.. output.csv output **smiles** and **score**.
+The **output** contains score of each molecules in input_unlabel.csv, indicating its selection priority. output.csv output **smiles** and **score**.
 
 # Reference
 Traversing chemical space with active deep learning for low-data drug discovery, Nature Computational Science, 2024

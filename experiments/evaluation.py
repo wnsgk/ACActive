@@ -47,9 +47,11 @@ if __name__ == '__main__':
     parser.add_argument('-cycle', help='Seed for scrambling the features', default=0)
     parser.add_argument('-beta', help='Seed for scrambling the features', default=0)
     parser.add_argument('-lamda', help='Seed for scrambling the features', default=0.01)
-    parser.add_argument('-input', help='Seed for scrambling the features', default='./data/input.csv')
-    parser.add_argument('-input_unlabel', help='Seed for scrambling the features', default='./data/input_unlabel.csv')
-    parser.add_argument('-output', help='Seed for scrambling the features', default='./result/output.csv')
+    parser.add_argument('--input', help='input data to be trained (column : smiles, y)', default='./data/input.csv')
+    parser.add_argument('--input_unlabel', help='input data to be evaluated (column : smiles)', default='./data/input_unlabel.csv')
+    parser.add_argument('--output', help='output data with score. high score means high priority (column : smiles, score)', default='./result/output.csv')
+    parser.add_argument("--assay_active_values", nargs="+", default=None, help="List of values to treat as Active labels (e.g., 1 active true yes).")
+    parser.add_argument("--assay_inactive_values", nargs="+", default=None, help="List of values to treat as Inactive labels (e.g., 0 inactive false no).")
     args = parser.parse_args()
     
     rround=16
@@ -109,4 +111,9 @@ if __name__ == '__main__':
                                 at_hidden=experiment['at_hidden'],
                                 layer=experiment['layer'],
                                 cycle_rnn=experiment['cycle'],
-                                lmda=experiment['lmda'])
+                                lmda=experiment['lmda'], 
+                                input=args.input,
+                                input_unlabel=args.input_unlabel,
+                                output=args.output,
+                                assay_active = args.assay_active_values,
+                                assay_inactive = args.assay_inactive_values)

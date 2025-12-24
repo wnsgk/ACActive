@@ -743,7 +743,7 @@ def to_torch_dataloader(x: Union[list, np.ndarray], y: Optional[np.ndarray] = No
     else:
         return pyg_DataLoader(x, **kwargs)
     
-def to_torch_dataloader_multi(xs, x: Union[list, np.ndarray], y: Optional[np.ndarray] = None, pred_list = None, **kwargs) -> \
+def to_torch_dataloader_multi(xs, x: Union[list, np.ndarray], y: Optional[np.ndarray] = None, pred_list = None, classification=False, **kwargs) -> \
         Union[DataLoader, pyg_DataLoader]:
 
     if type(x) is np.ndarray:
@@ -755,8 +755,10 @@ def to_torch_dataloader_multi(xs, x: Union[list, np.ndarray], y: Optional[np.nda
             lengths = torch.tensor([len(s) for s in seqs], dtype=torch.long)
             pred_padded = pad_sequence(seqs, batch_first=True, padding_value=0.0)
             x.extend([pred_padded, lengths])
-        return DataLoader(TensorDataset(*x, torch.tensor(y, dtype=torch.float32).unsqueeze(1)), **kwargs)
-        # return DataLoader(TensorDataset(*x, Tensor(y).unsqueeze(1).type(torch.LongTensor)), **kwargs)
+        if classification:
+            return DataLoader(TensorDataset(*x, Tensor(y).unsqueeze(1).type(torch.LongTensor)), **kwargs)
+        else:
+            return DataLoader(TensorDataset(*x, torch.tensor(y, dtype=torch.float32).unsqueeze(1)), **kwargs)
     else:
         if len(xs) > 0:
             for i, data in enumerate(x):
