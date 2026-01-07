@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import WeightedRandomSampler
 from active_learning.nn_contrastive import RfEnsemble, Ensemble_triple, AcqModel
 # from active_learning.nn_rnn_loss_sum import RfEnsemble, Ensemble_triple, AcqModel
-from active_learning.data_prep import MasterDataset, MasterDataset2
+from active_learning.data_prep import MasterDataset, MasterDataset2Labeled, MasterDataset2Unlabeled
 from active_learning.data_handler import Handler
 from active_learning.utils import Evaluate, to_torch_dataloader, to_torch_dataloader_multi
 from active_learning.acquisition import Acquisition, logits_to_pred
@@ -85,7 +85,7 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
                     scrambledx_seed: int = 1, cycle_threshold=1, beta=0, start = 0, feature = '',
                     hidden = 512, at_hidden = 64, layer = '', cycle_rnn = 0, lmda = 0.01, 
                     input='./data/input.csv', input_unlabel='./data/input_unlabel.csv', output='./result/output.csv',
-                    assay_active = None, assay_inactive = None, is_reverse=False) -> pd.DataFrame:
+                    assay_active = None, assay_inactive = None, input_val_col='y', input_unlabel_val_col='score', input_smiles_col='smiles', input_unlabel_smiles_col='smiles', is_reverse=False) -> pd.DataFrame:
     """
     :param n_start: number of molecules to start out with
     :param acquisition_method: acquisition method, as defined in active_learning.acquisition
@@ -107,9 +107,11 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
 
     # Load the datasets
     representation = 'ecfp' if architecture in ['mlp', 'rf', 'lgb', 'xgb', 'svm'] else 'graph'
-    ds_screen = MasterDataset2('screen', representation=representation, feature = feature, dataset=dataset, scramble_x=scrambledx,
-                              scramble_x_seed=scrambledx_seed, input=input, assay_active=assay_active, assay_inactive=assay_inactive, is_reverse=is_reverse)
-    ds_test = MasterDataset2('test', representation=representation, feature = feature, dataset=dataset, input=input_unlabel, assay_active=assay_active, assay_inactive=assay_inactive, is_reverse=is_reverse)
+
+    ds_screen = MasterDataset2Labeled('screen', representation=representation, feature = feature, dataset=dataset, scramble_x=scrambledx,
+                              scramble_x_seed=scrambledx_seed, input=input, assay_active=assay_active, assay_inactive=assay_inactive, input_val_col=input_val_col, input_smiles_col=input_smiles_col, is_reverse=is_reverse)
+    ds_test = MasterDataset2Unlabeled('test', representation=representation, feature = feature, dataset=dataset, input=input_unlabel, assay_active=assay_active, assay_inactive=assay_inactive, input_unlabel_val_col=input_unlabel_val_col, input_unlabel_smiles_col=input_unlabel_smiles_col)
+
     # Initiate evaluation trackers
 
     dir_name = f"{dir}/{seed}"
@@ -125,9 +127,16 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
     # exploration_factor = 1 / lambd^x. To achieve a factor of 1 at the last cycle: lambd = 1 / nth root of 2
     lambd = 1 / (2 ** (1/n_cycles))
 
-    ACQ = Acquisition(method='evaluation_exploitation', seed=seed, lambd=lambd)
+    unlabel_df = pd.read_csv(input_unlabel)
+    ACQ = Acquisition(
+        method='evaluation_exploitation',
+        seed=seed,
+        lambd=lambd,
+        unlabel_df=unlabel_df,
+        input_unlabel_smiles_col=input_unlabel_smiles_col,
+    )
     # While max_screen_size has not been achieved, do some active learning in cycles
-    result = pd.DataFrame(columns=['SMILES', 'score'])
+    result = pd.DataFrame(columns=[input_unlabel_smiles_col, 'score'])
     prediction_list = defaultdict(list)
     
     valid_loader = None
@@ -185,7 +194,16 @@ def active_learning(dir, n_start: int = 64, acquisition_method: str = 'explorati
     print("Sample acquisition")
     print('hit'+str(cycle)+' : ', len(hits))
 
-    ACQ = Acquisition(method='evaluation_exploitation', seed=seed, lambd=lambd)
+    ACQ = Acquisition(
+        method='evaluation_exploitation',
+        seed=seed,
+        lambd=lambd,
+        unlabel_df=unlabel_df,
+        input_unlabel_smiles_col=input_unlabel_smiles_col,
+    )
+    # get output directory name only eg. output = './results/ALDH1/gcn/exploration/0/random/0' then make directory ./results/ALDH1/gcn/exploration/0/random/
+    if os.path.dirname(output) != '':
+        os.makedirs(os.path.dirname(output), exist_ok=True)
     picks = ACQ.acquire(screen_logits_N_K_C, smiles_test, screen_loss=screen_logits_N_K_C_2, hits=hits, n=batch_size, seed=seed, cycle=cycle, y_screen = y_test, dir_name=dir_name, beta=beta, cliff=cycle_rnn, cycle_threshold=cycle_threshold, output=output, classification=assay_active is not None)
 
 

@@ -592,11 +592,25 @@ def evaluation_exploitation(logits_N_K_C: Tensor, smiles: np.ndarray[str], scree
     picks_idx = idx[:n]
 
     picks_idx1 = idx
-    df = pd.DataFrame({
-        "smiles": smiles[picks_idx1.cpu().numpy()],
-        "score": mean_probs_hits[picks_idx1].cpu().numpy()
-    })
-    df.to_csv(output, float_format="%.6f")
+    picks_np = picks_idx1.cpu().numpy()
+    scores_np = mean_probs_hits[picks_idx1].cpu().numpy()
+    unlabel_df = kwargs.get("unlabel_df")
+    smiles_col = kwargs.get("input_unlabel_smiles_col", "smiles")
+    if unlabel_df is not None:
+        if len(unlabel_df) != len(smiles):
+            raise ValueError(
+                f"input_unlabel length mismatch: df={len(unlabel_df)} vs smiles={len(smiles)}"
+            )
+        df = unlabel_df.iloc[picks_np].copy()
+        df["score"] = scores_np
+        df.insert(0, "ranking", np.arange(1, len(df) + 1))
+    else:
+        df = pd.DataFrame({
+            smiles_col: smiles[picks_np],
+            "score": scores_np,
+        })
+        df.insert(0, "ranking", np.arange(1, len(df) + 1))
+    df.to_csv(output, float_format="%.6f", index=False)
     return np.array([smiles[picks_idx.cpu()]]) if n == 1 else smiles[picks_idx.cpu()]
 
 def loss_prediction(logits_N_K_C: Tensor, smiles: np.ndarray[str], screen_loss, y_screen, dir_name, cycle, n: int = 1, **kwargs) -> np.ndarray[str]:

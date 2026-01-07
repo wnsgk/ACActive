@@ -1539,7 +1539,7 @@ class TrajAcqNet(torch.nn.Module):
 class AcqModel(torch.nn.Module):
     def __init__(self, hidden_dim=32):
         super().__init__()
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         self.model = TrajAcqNet(hidden_dim=hidden_dim).to(self.device)
 
     def make_dataset_from_list(self, score_list, label_list):

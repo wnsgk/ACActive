@@ -16,6 +16,17 @@ from active_learning.utils import molecular_graph_featurizer as smiles_to_graph,
     get_tanimoto_matrix, check_featurizability, scramble_graphs, get_brics_fp, get_brics
 
 
+def resolve_column_name(df: pd.DataFrame, column: str, path: str) -> str:
+    if column in df.columns:
+        return column
+    matches = [col for col in df.columns if col.lower() == column.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise KeyError(f"Column '{column}' is ambiguous in {path}. Matches: {matches}")
+    raise KeyError(f"Column '{column}' not found in {path}. Available columns: {list(df.columns)}")
+
+
 def canonicalize(smiles: str, sanitize: bool = True):
     return Chem.MolToSmiles(Chem.MolFromSmiles(smiles, sanitize=sanitize))
 
@@ -158,7 +169,7 @@ class MasterDataset:
                     return np.load(f"/data2/project/junha/traversing_chem_space/data/{dataset}/molformer_embeddings_{name}.npy")
                 model_name = "ibm/MoLFormer-XL-both-10pct"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            device = torch.device("cuda:0")
+            device = torch.device("cuda:1")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
             batch_size = 1024
             embedding = []
@@ -239,11 +250,11 @@ class MasterDataset:
             return self.x[idx], self.y[idx], self.smiles[idx], self.x[idx], self.murcko[idx]
 
 
-class MasterDataset2:
+class MasterDataset2Labeled: # Test가 아닌경우
+    """Test가 아닌경우"""
     """ Dataset that holds all data in an indexable way """
     def __init__(self, name: str, df: pd.DataFrame = None, dataset: str = 'ALDH1', nbits=1024, feature = '', representation: str = 'ecfp', root: str = 'data',
-                 overwrite: bool = False, scramble_x: bool = False, scramble_x_seed: int = 1, input='./data/input.csv', assay_active = None, assay_inactive = None,
-                 is_reverse=False) -> None:
+                 overwrite: bool = False, scramble_x: bool = False, scramble_x_seed: int = 1, input='./data/input.csv', assay_active = None, assay_inactive = None, input_val_col='y', input_smiles_col='smiles', is_reverse=False) -> None:
 
         assert representation in ['ecfp', 'graph', 'scaffold'], f"'representation' must be 'ecfp' or 'graph', not {representation}"
         self.mode = name
@@ -251,7 +262,10 @@ class MasterDataset2:
         self.pth = input
         self.assay_active = assay_active
         self.assay_inactive = assay_inactive
+        self.input_val_col = input_val_col
+        self.input_smiles_col = input_smiles_col
         self.is_reverse = is_reverse
+
         self.smiles, self.x, self.y = self.load()
 
         feature_map = {'cb':'chemberta', 'mf':'molformer', 'um':'unimol', 'ba':'brics_all', 'bp':'brics_pos', 'bas':'brics_all_sim', 'bps':'brics_pos_sim','fp+cb':'chemberta', 
@@ -295,7 +309,7 @@ class MasterDataset2:
             elif feature == 'molformer':
                 model_name = "ibm/MoLFormer-XL-both-10pct"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            device = torch.device("cuda:0")
+            device = torch.device("cuda:1")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
             batch_size = 1024
             embedding = []
@@ -337,25 +351,25 @@ class MasterDataset2:
         print('Loading data ... ', flush=True, file=sys.stderr)
 
         csv = pd.read_csv(self.pth)
-
-        smiles = np.array(csv['smiles'])
+        smiles_col = resolve_column_name(csv, self.input_smiles_col, self.pth)
+        smiles = np.array(csv[smiles_col])
         x = smiles_to_ecfp(smiles, silent=False)
         if self.mode != 'test' and self.assay_active is not None:
-            csv.loc[csv['y'].isin(self.assay_active), 'y'] = 1
-            csv.loc[csv['y'].isin(self.assay_inactive), 'y'] = 0
-            csv['y'] = csv['y'].astype(int)
+            csv.loc[csv[self.input_val_col].isin(self.assay_active), self.input_val_col] = 1
+            csv.loc[csv[self.input_val_col].isin(self.assay_inactive), self.input_val_col] = 0
+            csv[self.input_val_col] = csv[self.input_val_col].astype(int)
+        
         elif self.mode != 'test' and self.assay_active is None:
-            csv['y'] = csv['y'].replace([np.inf, -np.inf], np.nan)
-            mu = csv['y'].mean()
-            sigma = csv['y'].std(ddof=0)   # population std (권장)
+            csv[self.input_val_col] = csv[self.input_val_col].replace([np.inf, -np.inf], np.nan)
+            mu = csv[self.input_val_col].mean()
+            sigma = csv[self.input_val_col].std(ddof=0)   # population std (권장)
 
-            csv['y'] = (csv['y'] - mu) / sigma
+            csv[self.input_val_col] = (csv[self.input_val_col] - mu) / sigma
             if self.is_reverse:
-                csv['y'] = -csv['y']
-        if self.mode != 'test':
-            y = np.array(csv['y'])
-        else:
-            y = np.zeros(len(csv))
+                csv[self.input_val_col] = -csv[self.input_val_col]
+
+        y = np.array(csv[self.input_val_col])
+
         return smiles, x, y
 
     def __len__(self) -> int:
@@ -370,6 +384,125 @@ class MasterDataset2:
         if self.representation == 'ecfp':
             return self.x[idx], self.y[idx], self.smiles[idx], [self.feature[i][idx] for i in range(len(self.feature))]
 
+class MasterDataset2Unlabeled: # Test인 경우
+    """Test인 경우"""
+    """ Dataset that holds all data in an indexable way """
+    def __init__(self, name: str, df: pd.DataFrame = None, dataset: str = 'ALDH1', nbits=1024, feature = '', representation: str = 'ecfp', root: str = 'data',
+                 overwrite: bool = False, scramble_x: bool = False, scramble_x_seed: int = 1, input='./data/input.csv', assay_active = None, assay_inactive = None, input_unlabel_val_col='score', input_unlabel_smiles_col='smiles') -> None:
+
+        assert representation in ['ecfp', 'graph', 'scaffold'], f"'representation' must be 'ecfp' or 'graph', not {representation}"
+        self.mode = name
+        self.representation = representation
+        self.pth = input
+        self.input_unlabel_val_col = input_unlabel_val_col
+        self.input_unlabel_smiles_col = input_unlabel_smiles_col
+
+        self.smiles, self.x, self.y = self.load()
+
+        feature_map = {'cb':'chemberta', 'mf':'molformer', 'um':'unimol', 'ba':'brics_all', 'bp':'brics_pos', 'bas':'brics_all_sim', 'bps':'brics_pos_sim','fp+cb':'chemberta', 
+                       'fp+mf':'molformer', 'fp+um':'unimol', 'fp+ba':'brics_all', 'fp+bp':'brics_pos', 'fp+bas':'brics_all_sim', 'fp+ps':'brics_pos_sim', 
+                       'fingerprint':'', '':'', 'fp':'fingerprint', 'gcn':'gcn', 'gat':'gat', 'gin':'gin', '0':'0'}
+
+        self.murcko = self.x #smiles_to_murcko_ecfp(self.smiles, silent=False)
+        feature = 'fp+mf+um'
+        self.feature = []
+        self.brics = None
+
+        feature = [x for x in feature.split("+")]
+
+        self.feature_name = [feature_map[f_i] for f_i in feature]
+        for f in self.feature_name:
+            if f == 'fingerprint':
+                self.feature.append(self.x)
+            elif f == '0':
+                self.feature.append(np.zeros(512))
+            elif f[0] != 'g':
+                self.feature.append(self.get_feature(f, dataset, name))
+    
+    def update_brics(self, train_smiles, train_positive_smiles):
+        for i, f in enumerate(self.feature_name):
+            if 'brics' in f:
+                if f == 'brics_all':
+                    self.feature[i] = get_brics_fp(train_smiles, self.brics, self.smiles)
+                elif f == 'brics_pos':
+                    self.feature[i] = get_brics_fp(train_positive_smiles, self.brics, self.smiles)
+                elif f == 'brics_all_sim':
+                    self.feature[i] = get_brics_fp(train_smiles, self.brics, self.smiles, sim=True)
+                elif f == 'brics_pos_sim':
+                    self.feature[i] = get_brics_fp(train_positive_smiles, self.brics, self.smiles, sim=True)
+                print('fp_size: ', len(self.feature[i][0]))
+    
+    def get_feature(self, feature, dataset, name):
+        result = None
+        if feature in ['chemberta', 'molformer']:
+            if feature == 'chemberta':
+                model_name = "seyonec/ChemBERTa-zinc-base-v1"
+            elif feature == 'molformer':
+                model_name = "ibm/MoLFormer-XL-both-10pct"
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            device = torch.device("cuda:1")
+            self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
+            batch_size = 1024
+            embedding = []
+            smiles_list = list(self.smiles)
+            for i in tqdm(range(0, len(smiles_list), batch_size), desc="Embedding", unit="batch"):
+
+                inputs = self.tokenizer(smiles_list[i:i+batch_size], return_tensors="pt", padding=True, truncation=True).to(device)
+
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
+
+                # 보통 [CLS] 토큰 또는 평균 pooling을 사용
+                if feature == 'chemberta':
+                    embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()   # [CLS] 토큰 (batch, hidden_dim)
+                elif feature == 'molformer':
+                    embeddings = outputs.pooler_output.cpu().numpy()
+                embedding.append(embeddings)
+            result = np.concatenate(embedding, axis=0)
+
+        ################### unimol ################
+        elif feature == 'unimol':
+            repr_model = UniMolRepr(
+                data_type='molecule',   # 'molecule', 'oled', 'pocket' 등
+                remove_hs=False,
+                model_name='unimolv2',  # 또는 'unimolv2'
+                model_size='84m',       # unimolv2 쓸 때만 의미 있음
+                # pretrained_model_path=None, pretrained_dict_path=None 이면
+                # 알아서 HuggingFace에서 가중치 다운로드
+            )
+            
+            result = np.array(repr_model.get_repr(list(self.smiles))['cls_repr'])
+        elif 'brics' in feature:
+            self.brics = get_brics(self.smiles, dataset, split=name)
+            result = self.x
+        return result
+
+    def load(self) -> (np.ndarray, np.ndarray, np.ndarray):
+
+        print('Loading data ... ', flush=True, file=sys.stderr)
+
+        csv = pd.read_csv(self.pth)
+        smiles_col = resolve_column_name(csv, self.input_unlabel_smiles_col, self.pth)
+        smiles = np.array(csv[smiles_col])
+        x = smiles_to_ecfp(smiles, silent=False)
+        if self.mode != 'test' and self.assay_active is not None:
+            csv.loc[csv[self.input_val_col].isin(self.assay_active), self.input_val_col] = 1
+            csv.loc[csv[self.input_val_col].isin(self.assay_inactive), self.input_val_col] = 0
+            csv[self.input_val_col] = csv[self.input_val_col].astype(int)
+        y = np.zeros(len(csv), dtype=float)
+        return smiles, x, y
+
+    def __len__(self) -> int:
+        return len(self.smiles)
+
+    def all(self):
+        return self[range(len(self.smiles))]
+
+    def __getitem__(self, idx):
+        if type(idx) is int:
+            idx = [idx]
+        if self.representation == 'ecfp':
+            return self.x[idx], self.y[idx], self.smiles[idx], [self.feature[i][idx] for i in range(len(self.feature))]
 
 def smi_to_scaff(smiles: str, includeChirality: bool = False):
     return MurckoScaffold.MurckoScaffoldSmiles(mol=Chem.MolFromSmiles(smiles), includeChirality=includeChirality)

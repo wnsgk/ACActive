@@ -54,6 +54,10 @@ if __name__ == '__main__':
     parser.add_argument('--output', help='output data with score. high score means high priority (column : smiles, score)', default='./result/output.csv')
     parser.add_argument("--assay_active_values", nargs="+", default=None, help="List of values to treat as Active labels (e.g., 1 active true yes).")
     parser.add_argument("--assay_inactive_values", nargs="+", default=None, help="List of values to treat as Inactive labels (e.g., 0 inactive false no).")
+    parser.add_argument('--input_val_col', help='labeled input csv label column name', default='y')
+    parser.add_argument('--input_unlabel_val_col', help='unlabeled input csv value column name', default='score')
+    parser.add_argument('--input_smiles_col', help='labeled input csv smiles column name', default='smiles')
+    parser.add_argument('--input_unlabel_smiles_col', help='unlabeled input csv smiles column name', default='smiles')
     parser.add_argument("--is_reverse", help='small value are better', action="store_true")
     args = parser.parse_args()
     
@@ -86,6 +90,10 @@ if __name__ == '__main__':
     PARAMETERS['lmda'] =  [args.lamda]
     PARAMETERS['input'] =  [args.input]
     PARAMETERS['input_unlabel'] =  [args.input_unlabel]
+    PARAMETERS['input_val_col'] =  [args.input_val_col]
+    PARAMETERS['input_unlabel_val_col'] =  [args.input_unlabel_val_col]
+    PARAMETERS['input_smiles_col'] =  [args.input_smiles_col]
+    PARAMETERS['input_unlabel_smiles_col'] =  [args.input_unlabel_smiles_col]
     
     dir_name = f"./result"
     
@@ -120,6 +128,10 @@ if __name__ == '__main__':
                                 output=args.output,
                                 assay_active = args.assay_active_values,
                                 assay_inactive = args.assay_inactive_values,
+                                input_val_col=args.input_val_col,
+                                input_unlabel_val_col=args.input_unlabel_val_col,
+                                input_smiles_col=args.input_smiles_col,
+                                input_unlabel_smiles_col=args.input_unlabel_smiles_col,
                                 is_reverse=args.is_reverse)
 
     def cleanup_unimol_tools_logs():
