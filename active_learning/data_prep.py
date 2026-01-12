@@ -169,7 +169,7 @@ class MasterDataset:
                     return np.load(f"/data2/project/junha/traversing_chem_space/data/{dataset}/molformer_embeddings_{name}.npy")
                 model_name = "ibm/MoLFormer-XL-both-10pct"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            device = torch.device("cuda:1")
+            device = torch.device("cuda:0")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
             batch_size = 1024
             embedding = []
@@ -309,7 +309,7 @@ class MasterDataset2Labeled: # Test가 아닌경우
             elif feature == 'molformer':
                 model_name = "ibm/MoLFormer-XL-both-10pct"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            device = torch.device("cuda:1")
+            device = torch.device("cuda:0")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
             batch_size = 1024
             embedding = []
@@ -440,7 +440,7 @@ class MasterDataset2Unlabeled: # Test인 경우
             elif feature == 'molformer':
                 model_name = "ibm/MoLFormer-XL-both-10pct"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-            device = torch.device("cuda:1")
+            device = torch.device("cuda:0")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(device)
             batch_size = 1024
             embedding = []
