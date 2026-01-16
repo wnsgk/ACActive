@@ -273,7 +273,7 @@ class MasterDataset2Labeled: # Test가 아닌경우
                        'fingerprint':'', '':'', 'fp':'fingerprint', 'gcn':'gcn', 'gat':'gat', 'gin':'gin', '0':'0'}
 
         self.murcko = self.x #smiles_to_murcko_ecfp(self.smiles, silent=False)
-        feature = 'fp+mf+um'
+        feature = feature or 'fp+mf+um'
         self.feature = []
         self.brics = None
 
@@ -404,7 +404,7 @@ class MasterDataset2Unlabeled: # Test인 경우
                        'fingerprint':'', '':'', 'fp':'fingerprint', 'gcn':'gcn', 'gat':'gat', 'gin':'gin', '0':'0'}
 
         self.murcko = self.x #smiles_to_murcko_ecfp(self.smiles, silent=False)
-        feature = 'fp+mf+um'
+        feature = feature or 'fp+mf+um'
         self.feature = []
         self.brics = None
 
