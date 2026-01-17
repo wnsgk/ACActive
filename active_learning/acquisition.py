@@ -577,17 +577,18 @@ def evaluation_exploitation(logits_N_K_C: Tensor, smiles: np.ndarray[str], scree
         probs = F.softmax(logits_N_K_C, dim=-1)
         probs = torch.mean(probs, dim=1)[:, 1]
     else:
-        probs = F.sigmoid(alpha * logits_N_K_C.squeeze())
-        
-    screen_loss = screen_loss.squeeze().float()
+        probs = F.sigmoid(alpha * logits_N_K_C)
+
+    # Keep vectors 1D so single-item batches don't collapse to scalars.
+    probs = probs.reshape(-1)
+    screen_loss = screen_loss.reshape(-1).float()
     idx = torch.argsort(probs, descending=True)
 
     # mean_probs_hits = probs.clone()
     mean_probs_hits = probs.clone() * (1 + screen_loss)# + beta*sigma
 
     idx = torch.argsort(mean_probs_hits, descending=True)
-    idx = idx.squeeze()
-    mean_probs_hits = mean_probs_hits.squeeze()
+    mean_probs_hits = mean_probs_hits.reshape(-1)
 
     picks_idx = idx[:n]
 
